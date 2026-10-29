@@ -27,9 +27,9 @@ All colors are CSS custom properties on `:root` in `web/src/styles.css`, written
 | `--info-bg` / `--info-ink` | `#e9f0f8` / `#1d4f91` | Info badge, passed check |
 | `--warning-bg` / `--warning-ink` | `#fdf1dc` / `#7a4300` | Warning badge, warning status panel, empty-day table rows. Panel border `#efd3a4`. |
 | `--critical-bg` / `--critical-ink` | `#fbe9e8` / `#9b1c1c` | Critical badge, critical panel and error notice (border `#efc2bf`), chart threshold line |
-| `--bar` / `--bar-over` | `#8aa6c8` / `#c2410c` | Chart bars under / over the latency threshold |
+| `--bar` / `--bar-over` | `var(--accent)` (resolves to `#1d4f91`) / `#c2410c` | Chart bars under / over the latency threshold |
 
-Status always pairs color with words: badges say "Critical", "Warning" or "Info", and the panel headline states the condition. The design probe measured all rendered text at 4.5:1 or better. Contrast for hover states wasn't measured separately.
+Status always pairs color with words: badges say "Critical", "Warning" or "Info", and the panel headline states the condition. The design probe measured all rendered text at 4.5:1 or better. Ordinary chart bars were measured against the rendered white chart surface at 8.141:1 in Chromium at 320, 390, 768 and 1440 pixels, exceeding the 3:1 non-text threshold. Contrast for hover states wasn't measured separately.
 
 ## Typography
 
@@ -119,7 +119,8 @@ All components are in `web/src/App.tsx`, with classes in `web/src/styles.css`.
 - **Downloads** (`ul.files`): each item is a neutral button with the `download` attribute plus a muted note.
 - **Disclosure** (`details.checks`): a native `summary` (44px, accent) that opens a list of pass/fail badges.
 - **Notice** (`.notice`, `.notice-critical`):
-  - Loading uses `role="status"`; the load error uses `role="alert"`, with the commands to fix it.
+  - Loading uses `role="status"`; a failed first load uses a full-page `role="alert"` notice with recovery commands.
+  - A failed reload keeps the dashboard mounted, including its summary, filters and downloads. A `role="alert"` notice above it says "Could not reload data. Showing the previous snapshot." and points to the existing Reload data button. `.notice + .status` adds a 12px gap. A successful retry removes the notice.
 - **Footer** (`.foot`): 13px muted text, with a hairline above. It shows the pinned block, hash, replay range and the read-only statement.
 - **Skip link** (`.skip`): sits off-screen until it receives focus, then appears in the top-left corner.
 

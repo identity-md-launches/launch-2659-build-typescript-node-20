@@ -1,7 +1,7 @@
 import { createPublicClient, fallback, http, type Address, type Hex, type PublicClient } from "viem";
 import { rpcUrls } from "./config.ts";
 
-// Read-only by construction: the tracker only ever calls eth_chainId, eth_call,
+// Read-only by construction: the tracker only ever calls eth_call,
 // eth_getStorageAt, eth_getCode, eth_getLogs and eth_getBlockByNumber.
 export function makeClient(urls = rpcUrls()): PublicClient {
   return createPublicClient({
@@ -16,12 +16,17 @@ export interface PinnedBlock {
   tag: "finalized" | "explicit";
 }
 
-/** One block for every read: ETHEREUM_BLOCK / --block if given, else the current finalized block. */
+/** One finalized block for every read, including historical ETHEREUM_BLOCK / --block snapshots. */
 export async function pinBlock(client: PublicClient, explicit?: string): Promise<PinnedBlock> {
   const requested = explicit ?? process.env.ETHEREUM_BLOCK;
+  const finalized = await client.getBlock({ blockTag: "finalized" });
+  if (finalized.number === null || finalized.hash === null) throw new Error("Finalized block has no number or hash");
+  if (requested && BigInt(requested) > finalized.number) {
+    throw new Error(`Requested block ${requested} is above finalized head ${finalized.number}. Choose a finalized block.`);
+  }
   const block = requested
     ? await client.getBlock({ blockNumber: BigInt(requested) })
-    : await client.getBlock({ blockTag: "finalized" });
+    : finalized;
   if (block.number === null || block.hash === null) throw new Error("Pinned block has no number or hash");
   return { number: block.number, hash: block.hash, timestamp: block.timestamp, tag: requested ? "explicit" : "finalized" };
 }

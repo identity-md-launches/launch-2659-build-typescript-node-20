@@ -14,7 +14,7 @@
   --warning-ink: #7a4300;
   --critical-bg: #fbe9e8;
   --critical-ink: #9b1c1c;
-  --bar: #8aa6c8;
+  --bar: var(--accent);
   --bar-over: #c2410c;
 
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -473,6 +473,9 @@ tbody tr:last-child > * {
 .notice-critical {
   background: var(--critical-bg);
   border-color: #efc2bf;
+}
+.notice + .status {
+  margin-top: var(--space-3);
 }
 .foot {
   margin-block: var(--space-8);

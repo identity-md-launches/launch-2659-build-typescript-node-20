@@ -105,6 +105,30 @@ test("mining checkpoint lag at a checkpoint and at the pinned block", () => {
   assert.equal(r.now.miningLagRounds, 40);
 });
 
+test("daily rollup includes quiet days through the pinned UTC date", () => {
+  const at = (iso: string) => Date.parse(iso) / 1000;
+  for (const snapshot of ["2026-10-13T00:01:00Z", "2026-10-15T00:01:00Z"]) {
+    const r = analyze({
+      timing: { genesisTimestamp: 1791847800, roundDuration: 600 },
+      thresholds: { ...thresholds, unsettledRounds: snapshot.includes("15T") ? 1000 : 6 },
+      controls: [], checkpoints: [],
+      batches: [batch(0, 2, at("2026-10-12T23:59:00Z"), 1, 0)],
+      pinned: pinned(at(snapshot), 2),
+    });
+    assert.equal(r.alerts.length, 0);
+    assert.equal(r.daily[0]!.date, "2026-10-12");
+    assert.equal(r.daily.at(-1)!.date, snapshot.slice(0, 10));
+    assert.equal(r.daily.length, snapshot.includes("15T") ? 4 : 2);
+    for (const day of r.daily.slice(1)) {
+      assert.deepEqual(day, {
+        date: day.date, batches: 0, roundsSettled: 0, activeRounds: 0,
+        medianOldestLatencySec: 0, maxOldestLatencySec: 0, medianNewestLatencySec: 0, maxGapSec: 0, alerts: 0,
+      });
+    }
+    if (snapshot.includes("13T")) assert.equal(r.now.unsettledClosedRounds, 1);
+  }
+});
+
 test("percentiles, CSV quoting and slot decoding", () => {
   assert.deepEqual(percentiles([5, 1, 3]), { min: 1, p50: 3, p90: 5, p99: 5, max: 5 });
   assert.equal(toCsv([{ a: 'x,"y"', b: 1 }], ["a", "b"]), 'a,b\n"x,""y""",1\n');

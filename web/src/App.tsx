@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ALERT_LABELS, EXPLORER, count, duration, shortHash, when } from "./format.ts";
 import type { Alert, Severity, Summary } from "./types.ts";
 
-type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; summary: Summary };
+type Load = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; summary: Summary; reloadError?: string };
 
 const PAGE = 15;
 const DATA = "./data/";
@@ -17,7 +17,8 @@ export function App() {
       if (!res.ok) throw new Error(`summary.json returned HTTP ${res.status}`);
       setLoad({ state: "ready", summary: (await res.json()) as Summary });
     } catch (error) {
-      setLoad({ state: "error", message: (error as Error).message });
+      const message = (error as Error).message;
+      setLoad((l) => l.state === "ready" ? { ...l, reloadError: message } : { state: "error", message });
     }
   }, []);
 
@@ -52,7 +53,16 @@ export function App() {
             </p>
           </div>
         )}
-        {load.state === "ready" && <Dashboard summary={load.summary} />}
+        {load.state === "ready" && (
+          <>
+            {load.reloadError && (
+              <p className="notice notice-critical" role="alert">
+                Could not reload data. Showing the previous snapshot. Use Reload data to try again.
+              </p>
+            )}
+            <Dashboard summary={load.summary} />
+          </>
+        )}
       </main>
     </>
   );

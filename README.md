@@ -4,7 +4,7 @@ A read-only TypeScript tracker for how long SqueekCore takes to settle closed ro
 
 It pins one finalized Sepolia block and runs the official [Squeekchain Quickstart](https://docs.squeekchain.com/developers/quickstart/) deployment checks at that block. If any check fails, it stops. If all pass, it replays every SqueekCore `BatchSettled`, `Paused`, `Unpaused` and `ReporterUpdated` event and every SqueekMining `Checkpointed` event from the Core deploy block (11902282). From those it computes per-batch latency, gaps and alerts and writes them to `out/`.
 
-There's no wallet and no private keys. The only RPC methods it uses are `eth_chainId`, `eth_call`, `eth_getStorageAt`, `eth_getCode`, `eth_getLogs` and `eth_getBlockByNumber`.
+There's no wallet and no private keys. The only RPC methods it uses are `eth_call`, `eth_getStorageAt`, `eth_getCode`, `eth_getLogs` and `eth_getBlockByNumber`. Chain identity is checked by executing the EVM `CHAINID` opcode in a read-only `eth_call` at the pinned block; no contract is deployed.
 
 ## Quick start
 
@@ -16,18 +16,20 @@ npm run verify        # Quickstart deployment checks at the current finalized bl
 npm run track         # verify, replay and write out/*.csv + out/summary.json
 npm run build         # build the dashboard into dist/ and copy out/ into dist/data/
 npm run serve         # http://127.0.0.1:4173/ serving dist/, with /data/* read live from out/
-npm test              # unit tests for the latency and alert logic
+npm test              # unit tests for finality, RPC identity, latency and alerts
 npm run typecheck     # tsc --noEmit over tracker, tests and dashboard
 ```
 
 To reproduce the committed snapshot exactly, pin the same block: `npm run track -- --block 12017150` (or `ETHEREUM_BLOCK=12017150`).
+
+Both `verify` and `track` resolve the finalized head even when a block is supplied. A block above that head is rejected before deployment checks or replay. Historical blocks at or below the finalized head remain available. If the RPC cannot resolve finality, the run stops.
 
 ### Configuration (environment variables)
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `RPC_URL` | onfinality, 0xrpc.io, publicnode (comma-separated fallback list) | Public Sepolia RPC(s). Must serve historical state and `eth_getLogs`. |
-| `ETHEREUM_BLOCK` / `--block` | current `finalized` block | The one block every read uses |
+| `ETHEREUM_BLOCK` / `--block` | current `finalized` block | The one snapshot block every state read uses; must be at or below the finalized head |
 | `OUT_DIR` / `--out` | `out` | Output directory |
 | `LOG_CHUNK_BLOCKS` | `10000` | `eth_getLogs` range; it is halved automatically when an endpoint refuses |
 | `LATENCY_ALERT_SEC` | `3600` | `SETTLEMENT_LATENCY` when a batch's oldest round waited longer than this |
@@ -40,7 +42,7 @@ The expected deployment identities are built in from the docs' `sepolia-env.sh` 
 
 ## What it checks and computes
 
-**Deployment checks** (`src/tracker/verify.ts`, 26 checks): chain ID. For SqueekCore and SqueekMining: EIP-1967 implementation and admin slots, `implementationCodeAddress()`, keccak256 of the implementation runtime code, storage layout digest, implementation version (3 and 6), and ProxyAdmin `owner()` equal to the governance timelock. Graph links: `SqueekMining.core()`, `SqueekToken.mining()` and `SqueekMining.collectionPolicy(0).nft`. Launch config from `SqueekCore.configuration()`: streamId, genesis, roundDuration, maxRoundsPerBatch, maxWorkPerRound, blockUnitsPerBlock, guardian and reporter. Any mismatch stops the run before replay (exit 1). After the run, the tracker re-reads the pinned block and confirms its hash hasn't changed.
+**Deployment checks** (`src/tracker/verify.ts`, 26 checks): chain ID, decoded as a uint256 from execution-only `eth_call` bytecode `0x4660005260206000f3` at the pinned block. For SqueekCore and SqueekMining: EIP-1967 implementation and admin slots, `implementationCodeAddress()`, keccak256 of the implementation runtime code, storage layout digest, implementation version (3 and 6), and ProxyAdmin `owner()` equal to the governance timelock. Graph links: `SqueekMining.core()`, `SqueekToken.mining()` and `SqueekMining.collectionPolicy(0).nft`. Launch config from `SqueekCore.configuration()`: streamId, genesis, roundDuration, maxRoundsPerBatch, maxWorkPerRound, blockUnitsPerBlock, guardian and reporter. Any mismatch stops the run before replay (exit 1). After the run, the tracker re-reads the pinned block and confirms its hash hasn't changed.
 
 **Per batch** (`src/tracker/analyze.ts`). Round `r` covers `[genesis + (r-1)·600, genesis + r·600)` and closes at `genesis + r·600`, following the Quickstart's `currentRound` formula. A batch settles rounds `previousSettledThroughRound + 1 … settledThroughRound`.
 
@@ -66,7 +68,7 @@ The expected deployment identities are built in from the docs' `sepolia-env.sh` 
 
 - `batches.csv`: one row per `BatchSettled`
 - `alerts.csv`: every alert
-- `daily.csv`: one row per UTC day; days with no settlements are kept
+- `daily.csv`: one row per UTC day from the first event through the pinned block's date, including quiet days with no batches or alerts
 - `summary.json`: pinned block and hash, all checks, current state, percentiles, alert counts, the 300 most recent alerts, the last 288 batches and the daily rollup. The dashboard reads this file.
 
 ## Dashboard and static export
@@ -86,7 +88,7 @@ On the dashboard you can:
 - read the daily table
 - download the four outputs
 - expand the 26 deployment checks
-- reload the data
+- reload the data; if a refresh fails, the previous snapshot remains visible with a retry notice. The full-page error is reserved for a failed initial load.
 
 ## Snapshot in this repository
 
@@ -100,6 +102,10 @@ Run at finalized block **12017150** (`0xdbb95797…5850`, 2026-10-29 04:36:36 UT
 - The `NONCE_JUMP` on 2026-10-22 (1111 to 1115) is one more than the pause and unpause explain. A Reporter rotation happened in between. The docs don't say whether rotation advances the nonce, so it stays a warning.
 
 ## Validation (worker-side, recorded honestly)
+
+**Revision validation:** 13/13 unit tests, typecheck, production build, 66/66 Chromium interaction checks and 16/16 design-probe checks passed. Live verification passed 26/26 checks and a full replay at block 12017150 reproduced all three CSVs byte for byte. See [artifacts/validation.md](artifacts/validation.md) for reproductions, source locations, six-domain review and limitations. Finding verdicts are in [.imd-responses.json](.imd-responses.json).
+
+The following table and review retain the original submission's results; the revision report above records the checks repeated for this change.
 
 Commands run on this machine with Node 24.21.0:
 
@@ -160,6 +166,18 @@ I used the pinned guide (`better-interface/REFERENCE.md`) while building, then r
 - Contrast was measured by the probe only, not per state (for example hover).
 - The chart uses color plus height, and its caption carries the numbers.
 - The browser checks used Chromium only.
+
+### Repeat the optional browser regression check
+
+The browser check serves `dist/` under `/preview/` and tests the committed snapshot, filters, paging, downloads, deployment disclosure, chart contrast, reload failure/retry and initial-load failure/retry at 320, 390, 768 and 1440 pixels. Install its optional tooling outside the repository:
+
+```sh
+npm install --prefix /tmp/squeek-browser-tests --cache /tmp/squeek-browser-cache playwright
+PLAYWRIGHT_BROWSERS_PATH=/tmp/squeek-browser-browsers /tmp/squeek-browser-tests/node_modules/.bin/playwright install chromium
+IMD_PLAYWRIGHT=/tmp/squeek-browser-tests/node_modules/playwright/index.mjs PLAYWRIGHT_BROWSERS_PATH=/tmp/squeek-browser-browsers node tests/dashboard.browser.mjs
+```
+
+To check WebKit, install its browser and system libraries, then run the same command with `TEST_BROWSER=webkit`. WebKit could not launch on the revision worker because required system libraries were missing.
 
 ### Other limitations
 

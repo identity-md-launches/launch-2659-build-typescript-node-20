@@ -458,7 +458,8 @@ export function analyze(input: {
   const known = [...new Set([...byDay.keys(), ...alertsByDay.keys()])].sort();
   const days: string[] = [];
   if (known.length) {
-    for (let d = Date.parse(`${known[0]}T00:00:00Z`); d <= Date.parse(`${known[known.length - 1]}T00:00:00Z`); d += 86_400_000) {
+    const lastDay = Date.parse(`${iso(pinned.timestamp).slice(0, 10)}T00:00:00Z`);
+    for (let d = Date.parse(`${known[0]}T00:00:00Z`); d <= lastDay; d += 86_400_000) {
       days.push(new Date(d).toISOString().slice(0, 10));
     }
   }

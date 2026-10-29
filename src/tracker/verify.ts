@@ -1,4 +1,4 @@
-import { getAddress, keccak256, type Address, type Hex, type PublicClient } from "viem";
+import { decodeAbiParameters, getAddress, keccak256, type Address, type Hex, type PublicClient } from "viem";
 import { graphAbi, identityAbi } from "./abi.ts";
 import { env } from "./config.ts";
 
@@ -50,7 +50,10 @@ export async function verifyGraph(client: PublicClient, blockNumber: bigint): Pr
     }
   };
 
-  const chainId = await client.getChainId();
+  // Execute CHAINID / MSTORE / RETURN as creation bytecode in eth_call.
+  // No contract is deployed; chain identity uses the same pinned block and RPC allowlist.
+  const { data } = await client.call({ data: "0x4660005260206000f3", blockNumber });
+  const [chainId] = decodeAbiParameters([{ type: "uint256" }], data ?? "0x");
   check("network", "chain ID", env("EXPECTED_CHAIN_ID"), chainId);
 
   const proxy = async (name: "CORE" | "MINING", label: string, version: string) => {
